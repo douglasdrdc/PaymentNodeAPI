@@ -1,3 +1,5 @@
+let logger = require('../services/logger');
+
 module.exports = function(app) {
 
     app.get('/pagamento', function(req, res) {
@@ -25,23 +27,22 @@ module.exports = function(app) {
         let memcachedClient = app.services.memcachedClient();
         memcachedClient.get('pagamento-' + id, function(err, resultado) {
             if (err || !resultado) {
-                console.log('MISS - chave não encontrada');
-
                 let connection = app.infra.connectionFactory();
                 let pagDAO = new app.infra.pagamentoDAO(connection);
 
                 pagDAO.getById(pagamento, function(err, result) {
                     if (err) {
                         res.status(500).send(err);
+                        logger.error(err);
                     }
                     else {
                         res.status(200).send(result);
                     }
                     connection.end();
                 }); 
-            } else {
-                console.log('HIT - valor: ' + JSON.stringify(resultado));
+            } else {                
                 res.status(200).send(resultado);
+                logger.info('MISS - ' + JSON.stringify(resultado));
             }
         });
     });
@@ -68,6 +69,7 @@ module.exports = function(app) {
         pagDAO.insert(pagamento, function(err, result) {
             if (err) {
                 res.status(500).send(err);
+                logger.error(err);
             }
             else {
                 connection.end();                    
@@ -77,13 +79,12 @@ module.exports = function(app) {
                 memcachedClient.set('pagamento-' + pagamento.id, pagamento, 60000, function(err, resultado) {});
 
                 if (pagamento.formaPagamento == 'cartao') {
-                    console.log('Forma de Pagamento: ' + pagamento.formaPagamento);
-
                     let cartao = req.body["cartao"];
                     let cartaoService = new app.services.clienteCartoes();
                     cartaoService.autoriza(cartao, function(erroCartao, reqCartao, resCartao, retornoCartao) {
                         if (erroCartao) {
                             res.status(400).send(erroCartao);
+                            logger.error(erroCartao);
                             return;
                         }
                         
@@ -148,12 +149,14 @@ module.exports = function(app) {
         pagDAO.update(pagamento, function(err, result) {
             if (err) {
                 res.status(500).send(err);
+                logger.error(err);
             }
             else {
 
                 pagDAO.getById(pagamento, function(errGet, resultGet) {
                     if (err) {
-                        res.status(500).send(err);
+                        res.status(500).send(errGet);
+                        logger.error(errGet);
                     }
                     else
                     {
@@ -180,11 +183,13 @@ module.exports = function(app) {
         pagDAO.delete(pagamento, function(err, result) {
             if (err) {
                 res.status(500).send(err);
+                logger.error(err);
             }
             else {
                 pagDAO.getById(pagamento, function(errGet, resultGet) {
                     if (err) {
-                        res.status(500).send(err);
+                        res.status(500).send(errGet);
+                        logger.error(errGet);
                     }
                     else
                     {
@@ -193,10 +198,7 @@ module.exports = function(app) {
                         
                         res.status(204).send(resultGet);
                     }
-                });
-
-
-                
+                });                
             }
             connection.end();
         }); 
